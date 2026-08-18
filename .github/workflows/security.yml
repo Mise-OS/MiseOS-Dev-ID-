@@ -1,14 +1,11 @@
 name: Security Gate
-
 on:
   push:
     branches: [main]
     tags: ["v*", "security-*"]
   pull_request:
-
 permissions:
   contents: read
-
 jobs:
   security-gate:
     name: Build + 50-case adversarial gate
@@ -18,7 +15,6 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: npm
       - name: Install dependencies
         run: npm install --ignore-scripts
       - name: Typecheck/build
