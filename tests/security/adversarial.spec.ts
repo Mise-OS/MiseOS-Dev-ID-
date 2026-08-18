@@ -1,6 +1,6 @@
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { createHash, generateKeyPairSync, sign, type Server } from "node:crypto";
-import { createServer } from "node:http";
+import { createHash, generateKeyPairSync, sign } from "node:crypto";
+import { createServer, type Server } from "node:http";
 import { exportJWK, SignJWT, type JWK } from "jose";
 import { canonicalize } from "../../src/canonical/jcs.js";
 import { envelopeBytes, type SignedEnvelopeV1 } from "../../src/crypto/envelope.js";
