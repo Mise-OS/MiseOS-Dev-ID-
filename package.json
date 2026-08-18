@@ -1,0 +1,23 @@
+{
+  "name": "@miseos/dev-id",
+  "version": "1.0.0-security-rc2",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "test:security": "vitest run tests/security/adversarial.spec.ts",
+    "check": "npm run build && npm run test:security"
+  },
+  "dependencies": {
+    "@actions/core": "^1.11.1",
+    "canonicalize": "^2.0.0",
+    "jose": "^6.1.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.0"
+  }
+}
