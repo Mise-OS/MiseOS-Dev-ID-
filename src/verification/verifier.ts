@@ -21,30 +21,22 @@ export interface VerificationContext {
   oidcToken: string; oidcPolicy: GithubIdentityPolicy;
   trustedIdentityBinding: { githubSubject: string; repository: string; keyId: string };
 }
-
-const factor = (factors: VerificationFactor[], name: string, status: VerificationFactor["status"], reason?: string) => factors.push({ name, status, ...(reason ? { reason } : {}) });
+const factor = (f: VerificationFactor[], name: string, status: VerificationFactor["status"], reason?: string) => f.push({ name, status, ...(reason ? { reason } : {}) });
 
 export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, delegationChain: DelegationCredential[] | null, authorization: AuthorizationSnapshot & { requestedOperation: "publish" | "sign" | "delegate" | "access"; resource: string; requestedAt: string }, context: VerificationContext): Promise<VerificationDecision> {
-  const factors: VerificationFactor[] = [];
-  const now = Date.now();
-
-  // 1. Manifest integrity.
+  const factors: VerificationFactor[] = []; const now = Date.now();
   try {
     const digest = createHash("sha256").update(canonicalize(manifest), "utf8").digest("hex");
     factor(factors, "manifest-integrity", digest === envelope.payloadDigest.value ? "satisfied" : "failed", digest === envelope.payloadDigest.value ? undefined : "Manifest hash mismatch");
   } catch (e) { factor(factors, "manifest-integrity", "failed", `Canonicalization error: ${String(e)}`); }
 
-  // 2. Cryptographic GitHub OIDC verification.
   const oidc = await verifyOidcToken(context.oidcToken, context.oidcPolicy);
-  if (!oidc.valid || !oidc.claims) factor(factors, "oidc-cryptographic", "failed", oidc.reason ?? "OIDC verification failed");
-  else factor(factors, "oidc-cryptographic", "satisfied");
-
+  factor(factors, "oidc-cryptographic", oidc.valid ? "satisfied" : "failed", oidc.valid ? undefined : oidc.reason);
   const claims: GithubOidcClaims | undefined = oidc.claims;
   if (!claims) factor(factors, "oidc-identity", "unknown", "No verified OIDC claims available");
   else if (claims.sub !== context.trustedIdentityBinding.githubSubject || claims.repository !== context.trustedIdentityBinding.repository) factor(factors, "oidc-identity", "failed", "OIDC subject/repository binding mismatch");
   else factor(factors, "oidc-identity", "satisfied");
 
-  // 3. Exact key identity binding. keyId is not inferred from the token or envelope owner.
   const keyResolution = await context.keyRegistry.resolveKey(envelope.keyId);
   if (envelope.keyId !== context.trustedIdentityBinding.keyId) factor(factors, "key-binding", "failed", "Envelope keyId is not the exact authorized keyId");
   else if (keyResolution.status === "unknown") factor(factors, "key-registry", "unknown", "Authorized key could not be resolved");
@@ -52,7 +44,6 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
   else if (keyResolution.key.owner !== context.trustedIdentityBinding.githubSubject) factor(factors, "key-binding", "failed", "Registered key owner does not exactly match GitHub subject");
   else factor(factors, "key-registry", "satisfied");
 
-  // 4. Envelope signature, temporal and audience checks.
   if (keyResolution.status === "valid" && keyResolution.key && envelope.keyId === context.trustedIdentityBinding.keyId) {
     try {
       const issued = new Date(envelope.issuedAt).getTime(); const expires = envelope.expiresAt ? new Date(envelope.expiresAt).getTime() : NaN;
@@ -64,7 +55,8 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
     } catch (e) { factor(factors, "signature", "failed", `Signature verification error: ${String(e)}`); }
   } else factor(factors, "signature", "unknown", "Trusted signing key unavailable");
 
-  // 5. Authorization + resource matching + authorization revocation.
+  // Explicitly bind the signed authorization reference to the authorization credential being evaluated.
+  if (envelope.authorizationId !== authorization.credentialId) factor(factors, "authorization-binding", "failed", "Envelope authorizationId does not match authorization credentialId");
   if (claims && claims.sub !== authorization.subject) factor(factors, "authorization-subject", "failed", "Authorization subject does not match verified GitHub subject");
   else {
     const decision = evaluateResourceAuthorization(authorization, { subjectId: authorization.subject, operation: authorization.requestedOperation, resource: authorization.resource, audience: context.expectedAudience, requestedAt: authorization.requestedAt }, context.maxClockSkewMs);
@@ -77,7 +69,6 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
     else factor(factors, "authorization-revocation", "satisfied");
   } else factor(factors, "authorization-revocation", "failed", "Authorization revocationId is required");
 
-  // 6. Delegation is mandatory exactly when the envelope declares a delegation reference.
   if (envelope.delegationId) {
     if (!delegationChain?.length) factor(factors, "delegation", "failed", "Envelope requires delegation chain but none was supplied");
     else {
@@ -89,26 +80,21 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
   } else if (delegationChain?.length) factor(factors, "delegation", "failed", "Unexpected delegation chain supplied without envelope binding");
   else factor(factors, "delegation", "satisfied");
 
-  // 7. Atomic replay claim occurs only after every non-replay security factor has passed.
-  const preReplayFailed = factors.some(f => f.status === "failed");
-  const preReplayUnknown = factors.some(f => f.status === "unknown");
-  if (preReplayFailed) factor(factors, "replay", "unknown", "Replay claim skipped because another security factor failed");
+  if (!envelope.nonce) factor(factors, "nonce-format", "failed", "Nonce is required");
+  const preReplayFailed = factors.some(x => x.status === "failed"); const preReplayUnknown = factors.some(x => x.status === "unknown");
+  if (preReplayFailed) factor(factors, "replay", "satisfied", "Replay claim intentionally not consumed after failed authorization");
   else if (preReplayUnknown) factor(factors, "replay", "unknown", "Replay claim skipped because verification is indeterminate");
+  else if (!envelope.expiresAt) factor(factors, "replay", "failed", "Envelope expiration is required for nonce TTL");
   else {
-    if (!envelope.expiresAt) factor(factors, "replay", "failed", "Envelope expiration is required for nonce TTL");
-    else {
-      const claim = await context.replayStore.claimNonce(envelope.nonce, envelope.expiresAt);
-      if (claim === "claimed") factor(factors, "replay", "satisfied");
-      else if (claim === "replayed") factor(factors, "replay", "failed", "Nonce replay detected");
-      else factor(factors, "replay", "unknown", "Replay store unavailable");
-    }
+    const claim = await context.replayStore.claimNonce(envelope.nonce, envelope.expiresAt);
+    if (claim === "claimed") factor(factors, "replay", "satisfied");
+    else if (claim === "replayed") factor(factors, "replay", "failed", "Nonce replay detected");
+    else factor(factors, "replay", "unknown", "Replay store unavailable");
   }
 
-  const hasFailed = factors.some(f => f.status === "failed");
-  const hasUnknown = factors.some(f => f.status === "unknown");
-  if (hasFailed) return { effect: "deny", factors, reason: factors.find(f => f.status === "failed")?.reason };
-  if (hasUnknown) return { effect: "indeterminate", factors, reason: factors.find(f => f.status === "unknown")?.reason };
+  const hasFailed = factors.some(x => x.status === "failed"); const hasUnknown = factors.some(x => x.status === "unknown");
+  if (hasFailed) return { effect: "deny", factors, reason: factors.find(x => x.status === "failed")?.reason };
+  if (hasUnknown) return { effect: "indeterminate", factors, reason: factors.find(x => x.status === "unknown")?.reason };
   return { effect: "allow", factors };
 }
-
 export function authorityDecision(decision: VerificationDecision): "allow" | "deny" { return decision.effect === "allow" ? "allow" : "deny"; }
