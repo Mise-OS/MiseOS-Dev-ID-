@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run",
-    "test:security": "vitest run tests/security/adversarial.spec.ts",
+    "test:security": "vitest run tests/security",
     "check": "npm run build && npm run test:security"
   },
   "dependencies": {
