@@ -5,6 +5,7 @@ import { exportJWK, SignJWT, type JWK } from "jose";
 import { verifyOidcToken } from "../../src/github/oidc.js";
 
 const NOW = Math.floor(Date.now() / 1000);
+const ISSUER = "https://token.actions.githubusercontent.com";
 const AUD = "https://miseos.dev";
 const SUBJECT = "repo:Mise-OS/MiseOS-Dev-ID-:ref:refs/heads/main";
 const REPO = "Mise-OS/MiseOS-Dev-ID-";
@@ -14,6 +15,7 @@ let privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
 
 async function token(overrides: Record<string, unknown> = {}) {
   return new SignJWT({
+    iss: ISSUER,
     sub: SUBJECT,
     repository: REPO,
     repository_owner: "Mise-OS",
@@ -37,7 +39,7 @@ async function token(overrides: Record<string, unknown> = {}) {
 
 function policy() {
   return {
-    allowedIssuers: ["https://token.actions.githubusercontent.com"],
+    allowedIssuers: [ISSUER],
     allowedAudiences: [AUD],
     maxClockSkewSeconds: 300,
     jwksUrl,
