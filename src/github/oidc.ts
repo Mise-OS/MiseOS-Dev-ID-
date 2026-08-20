@@ -66,13 +66,13 @@ export async function verifyOidcToken(
       return { valid: false, reason: "OIDC policy must define issuer and audience" };
     }
 
-    const now = trustedClock();
+    const verificationNow = trustedClock();
     const { payload } = await jwtVerify(token, getJwks(policy.jwksUrl), {
       issuer,
       audience,
       algorithms: ["RS256"],
       clockTolerance: policy.maxClockSkewSeconds,
-      currentDate: new Date(now * 1000),
+      currentDate: new Date(verificationNow * 1000),
     });
 
     const claims = payload as GithubOidcClaims;
@@ -83,17 +83,20 @@ export async function verifyOidcToken(
       return { valid: false, reason: "OIDC iat and exp are required" };
     }
 
-    // GitHub OIDC is an authority input, so temporal validity is strict here.
-    // clockTolerance is retained for library-level validation of network-issued JWTs,
-    // but a token that is already expired or not yet issued must never reach ALLOW.
-    if (claims.iat > now) {
-      return { valid: false, reason: "OIDC token issued in the future" };
-    }
-    if (claims.exp <= now) {
-      return { valid: false, reason: "OIDC token is expired" };
+    // Preserve the configured issuance skew window: a verifier clock may lag
+    // GitHub by up to maxClockSkewSeconds. Expiration remains strict.
+    if (claims.iat > verificationNow + policy.maxClockSkewSeconds) {
+      return { valid: false, reason: "OIDC token issued too far in the future" };
     }
     if (claims.exp <= claims.iat) {
       return { valid: false, reason: "OIDC expiration is not after issuance" };
+    }
+
+    // Re-read the trusted clock after signature/JWKS verification. A token that
+    // expires while remote key material is fetched must not reach ALLOW.
+    const postVerificationNow = trustedClock();
+    if (claims.exp <= postVerificationNow) {
+      return { valid: false, reason: "OIDC token is expired" };
     }
 
     if (policy.allowedRepositories && !policy.allowedRepositories.includes(claims.repository)) {

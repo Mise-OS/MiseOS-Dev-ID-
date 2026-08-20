@@ -1,0 +1,11 @@
+- name: laminas/automatic-releases
+  # You may pin to the exact commit or the version.
+  # uses: laminas/automatic-releases@3529e49a0dcc5130e807ea29e496359eaf967b28
+  uses: laminas/automatic-releases@1.0.1
+  with:
+    # Command to execute: one of
+ * `laminas:automatic-releases:release`
+ * `laminas:automatic-releases:create-merge-up-pull-request`
+ * `laminas:automatic-releases:switch-default-branch-to-next-minor`
+
+    command-name: 
