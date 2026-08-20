@@ -1,0 +1,22 @@
+{
+  "schemaVersion": "0.1.0",
+  "purpose": "Non-authoritative integration routing manifest for agentic tooling around MiseOS Dev ID.",
+  "authorityBoundary": "The manifest never grants authority. Host-side policy, authorization, registry state, and the fail-closed verifier remain authoritative.",
+  "integrations": {
+    "github": { "class": "repository", "defaultMode": "read", "codeMode": true, "writes": "direct-or-approved" },
+    "coderabbit": { "class": "review", "defaultMode": "read-review", "codeMode": true, "writes": "review-only" },
+    "codex-coordinator": { "class": "orchestration", "defaultMode": "plan", "codeMode": false, "writes": "explicitly-approved" },
+    "parallel-search": { "class": "retrieval", "defaultMode": "read", "codeMode": true, "writes": "none" },
+    "post-metadata-extractor": { "class": "transformation", "defaultMode": "compute", "codeMode": true, "writes": "none" },
+    "hugging-face": { "class": "model-data-research", "defaultMode": "read", "codeMode": true, "writes": "none" },
+    "amplitude": { "class": "observability", "defaultMode": "read", "codeMode": true, "writes": "none" }
+  },
+  "securityRules": [
+    "Never expose raw credentials, signing keys, GitHub tokens, cloud credentials, or provider secrets to generated code.",
+    "Never expose arbitrary shell, unrestricted code execution, production deployment, destructive repository mutation, key registration, revocation, or authorization-state mutation through Code Mode.",
+    "All external tool inputs must be schema-validated and authorized at the host boundary.",
+    "Search and analytics results are supporting evidence, not scientific or security authority.",
+    "Telemetry must not alter ALLOW, DENY, or INDETERMINATE decisions.",
+    "Provenance records must preserve source identity and retrieval metadata without treating source availability as validity."
+  ]
+}
