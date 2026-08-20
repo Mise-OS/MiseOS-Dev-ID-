@@ -76,7 +76,7 @@ export async function verifyOidcToken(
     });
 
     const claims = payload as GithubOidcClaims;
-    if (!claims.sub || !claims.repository || !claims.repository_owner || !claims.workflow_ref) {
+    if (!claims.sub || !claims.repository || !claims.repository_owner || !claims.workflow_ref || !claims.workflow) {
       return { valid: false, reason: "Required GitHub claims missing" };
     }
     if (typeof claims.iat !== "number" || typeof claims.exp !== "number") {
@@ -105,12 +105,8 @@ export async function verifyOidcToken(
     if (policy.allowedRepositoryIds && !policy.allowedRepositoryIds.includes(claims.repository_id)) {
       return { valid: false, reason: "Repository ID not authorized" };
     }
-    if (policy.allowedWorkflows) {
-      const workflowRefWithoutRevision = claims.workflow_ref.split("@", 1)[0];
-      const workflowName = workflowRefWithoutRevision?.split("/").pop();
-      if (!workflowName || !policy.allowedWorkflows.includes(workflowName)) {
-        return { valid: false, reason: "Workflow not authorized" };
-      }
+    if (policy.allowedWorkflows && !policy.allowedWorkflows.includes(claims.workflow)) {
+      return { valid: false, reason: "Workflow not authorized" };
     }
     if (policy.allowedWorkflowRefs && !policy.allowedWorkflowRefs.includes(claims.workflow_ref)) {
       return { valid: false, reason: "Workflow ref not authorized" };
