@@ -31,13 +31,16 @@ export async function verifyIntegrationCapability(
   const decision = await verify(envelope, manifest, delegationChain, authorization, context);
 
   const factor = decision.factors;
-  const has = (name: string) => factor.some(item => item.name === name && item.status === 'satisfied');
+  const failed = (name: string) => factor.some(item => item.name === name && item.status === 'failed');
+  const unknown = (name: string) => factor.some(item => item.name === name && item.status === 'unknown');
+  const passed = (name: string) => !failed(name) && !unknown(name);
+
   const gateway = evaluateCapabilityRequest({
     ...capability,
-    authorizationVerified: has('authorization') && has('authorization-binding') && has('authorization-subject'),
-    signatureVerified: has('signature'),
-    revocationChecked: has('authorization-revocation'),
-    replayChecked: has('replay'),
+    authorizationVerified: passed('authorization') && passed('authorization-binding') && passed('authorization-subject'),
+    signatureVerified: passed('signature'),
+    revocationChecked: passed('authorization-revocation'),
+    replayChecked: passed('replay'),
   });
 
   if (gateway.decision !== 'ALLOW') {
