@@ -1,0 +1,12 @@
+- name: GitHub Actions CD
+  # You may pin to the exact commit or the version.
+  # uses: GriceTurrble/github-actions-cd-action@fe36ef474ddf82cc2345f56b425b4fe62a194779
+  uses: miseOs-Dev-ID/github-actions-cd-action@v0.0.2
+  with:
+    # The token that the action will use to create releases.
+    token: # optional, default is ${{ github.token }}
+    # Path to a file where the current version is tracked.
+The file should contain a semver-compliant version.
+Changes to this file trigger the workflow to create releases and tags.
+
+    version_file: # optional, default is VERSION
