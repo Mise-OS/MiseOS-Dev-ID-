@@ -106,7 +106,8 @@ export async function verifyOidcToken(
       return { valid: false, reason: "Repository ID not authorized" };
     }
     if (policy.allowedWorkflows) {
-      const workflowName = claims.workflow_ref.split("/").pop()?.split("@")[0];
+      const workflowRefWithoutRevision = claims.workflow_ref.split("@", 1)[0];
+      const workflowName = workflowRefWithoutRevision?.split("/").pop();
       if (!workflowName || !policy.allowedWorkflows.includes(workflowName)) {
         return { valid: false, reason: "Workflow not authorized" };
       }
