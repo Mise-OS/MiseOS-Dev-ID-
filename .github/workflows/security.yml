@@ -20,10 +20,17 @@ jobs:
       - name: Typecheck/build
         run: npm run build
       - name: Run adversarial security suite
-        run: npm run test:security
+        run: npm run test:security -- --reporter=json --outputFile=security-results.json
       - name: Refuse release on unauthorized ALLOW
         shell: bash
         run: |
           set -euo pipefail
           npm run test:security -- --reporter=verbose
           echo "Security gate passed: no unauthorized scenario reached ALLOW."
+      - name: Upload security diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-gate-diagnostics
+          path: security-results.json
+          if-no-files-found: ignore
