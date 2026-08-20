@@ -16,6 +16,7 @@ let privateKey: ReturnType<typeof generateKeyPairSync>["privateKey"];
 async function token(overrides: Record<string, unknown> = {}) {
   return new SignJWT({
     iss: ISSUER,
+    aud: AUD,
     sub: SUBJECT,
     repository: REPO,
     repository_owner: "Mise-OS",
