@@ -18,14 +18,14 @@ export function matchResource(resource: string, pattern: ResourcePattern): boole
   return new RegExp(`^${escaped}$`).test(resource);
 }
 export function isResourceAuthorized(resource: string, patterns: ResourcePattern[]): boolean { return patterns.some(p => matchResource(resource, p)); }
-export function evaluateResourceAuthorization(snapshot: AuthorizationSnapshot, request: AuthorizationRequest, maxClockSkewMs: number) {
+export function evaluateResourceAuthorization(snapshot: AuthorizationSnapshot, request: AuthorizationRequest, _maxClockSkewMs: number) {
   const now = new Date(request.requestedAt).getTime();
   if (snapshot.subject !== request.subjectId) return { authorized: false, reason: "Subject mismatch" };
   if (snapshot.state !== "SAFE") return { authorized: false, reason: `Credential state is ${snapshot.state}` };
   const issued = new Date(snapshot.issuedAt).getTime(); const expires = new Date(snapshot.expiresAt).getTime();
   if (!Number.isFinite(issued) || !Number.isFinite(expires)) return { authorized: false, reason: "Invalid authorization timestamps" };
-  if (issued > now + maxClockSkewMs) return { authorized: false, reason: "Credential not yet valid" };
-  if (expires < now - maxClockSkewMs) return { authorized: false, reason: "Credential expired" };
+  if (issued > now) return { authorized: false, reason: "Credential not yet valid" };
+  if (expires <= now) return { authorized: false, reason: "Credential expired" };
   if (!snapshot.scope.includes(request.operation)) return { authorized: false, reason: `Operation ${request.operation} not in scope` };
   if (!isResourceAuthorized(request.resource, snapshot.resources)) return { authorized: false, reason: `Resource ${request.resource} not authorized` };
   return { authorized: true as const };
