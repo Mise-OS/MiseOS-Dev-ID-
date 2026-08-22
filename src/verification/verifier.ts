@@ -23,7 +23,7 @@ export interface VerificationContext {
 }
 const factor = (f: VerificationFactor[], name: string, status: VerificationFactor["status"], reason?: string) => f.push({ name, status, ...(reason ? { reason } : {}) });
 
-export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, delegationChain: DelegationCredential[] | null, authorization: AuthorizationSnapshot & { requestedOperation: "publish" | "sign" | "delegate" | "access"; resource: string; requestedAt: string }, context: VerificationContext): Promise<VerificationDecision> {
+export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, delegationChain: DelegationCredential[] | null, authorization: AuthorizationSnapshot & { requestedOperation: "publish" | "delegate" }, context: VerificationContext): Promise<VerificationDecision> {
   const factors: VerificationFactor[] = []; const now = Date.now();
   try {
     const digest = createHash("sha256").update(canonicalize(manifest), "utf8").digest("hex");
@@ -34,7 +34,7 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
   factor(factors, "oidc-cryptographic", oidc.valid ? "satisfied" : "failed", oidc.valid ? undefined : oidc.reason);
   const claims: GithubOidcClaims | undefined = oidc.claims;
   if (!claims) factor(factors, "oidc-identity", "unknown", "No verified OIDC claims available");
-  else if (claims.sub !== context.trustedIdentityBinding.githubSubject || claims.repository !== context.trustedIdentityBinding.repository) factor(factors, "oidc-identity", "failed", "OIDC subject/repository mismatch with trusted binding");
+  else if (claims.sub !== context.trustedIdentityBinding.githubSubject || claims.repository !== context.trustedIdentityBinding.repository) factor(factors, "oidc-identity", "failed", "OIDC subject/repository mismatch");
   else factor(factors, "oidc-identity", "satisfied");
 
   const keyResolution = await context.keyRegistry.resolveKey(envelope.keyId);
@@ -50,7 +50,7 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
       if (!Number.isFinite(issued) || issued > now + context.maxClockSkewMs) factor(factors, "signature", "failed", "Invalid or future issuedAt");
       else if (!Number.isFinite(expires) || expires <= issued || expires < now - context.maxClockSkewMs) factor(factors, "signature", "failed", "Invalid or expired expiresAt");
       else if (envelope.audience !== context.expectedAudience) factor(factors, "signature", "failed", "Audience mismatch");
-      else if (!cryptoVerify(null, envelopeBytes(envelope), loadPublicKey(keyResolution.key.publicKey), Buffer.from(envelope.signature, "base64"))) factor(factors, "signature", "failed", "Cryptographic signature verification failed");
+      else if (!cryptoVerify(null, envelopeBytes(envelope), loadPublicKey(keyResolution.key.publicKey), Buffer.from(envelope.signature, "base64"))) factor(factors, "signature", "failed", "Cryptographic verification failed");
       else factor(factors, "signature", "satisfied");
     } catch (e) { factor(factors, "signature", "failed", `Signature verification error: ${String(e)}`); }
   } else factor(factors, "signature", "unknown", "Trusted signing key unavailable");
@@ -59,7 +59,7 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
   if (envelope.authorizationId !== authorization.credentialId) factor(factors, "authorization-binding", "failed", "Envelope authorizationId does not match authorization credentialId");
   if (claims && claims.sub !== authorization.subject) factor(factors, "authorization-subject", "failed", "Authorization subject does not match verified GitHub subject");
   else if (claims) {
-    const decision = evaluateResourceAuthorization(authorization, { subjectId: authorization.subject, operation: authorization.requestedOperation, resource: authorization.resource, audience: context.expectedAudience, requestedAt: authorization.requestedAt }, context.maxClockSkewMs);
+    const decision = evaluateResourceAuthorization(authorization, { subjectId: authorization.subject, operation: authorization.requestedOperation, resource: authorization.resource, audience: context.expectedAudience });
     factor(factors, "authorization", decision.authorized ? "satisfied" : "failed", decision.authorized ? undefined : decision.reason);
   }
   if (authorization.revocationId) {
@@ -72,7 +72,7 @@ export async function verify(envelope: SignedEnvelopeV1, manifest: unknown, dele
   if (envelope.delegationId) {
     if (!delegationChain?.length) factor(factors, "delegation", "failed", "Envelope requires delegation chain but none was supplied");
     else {
-      const d = await verifyDelegationChain(delegationChain, context.trustedIdentityBinding.githubSubject, authorization.subject, context.expectedAudience, context.maxDelegationDepth, context.keyRegistry);
+      const d = await verifyDelegationChain(delegationChain, context.trustedIdentityBinding.githubSubject, authorization.subject, context.expectedAudience, context.maxDelegationDepth, context.keyRegistry, context.revocationRegistry, context.maxClockSkewMs);
       factor(factors, "delegation", d.valid ? "satisfied" : "failed", d.valid ? undefined : d.reason);
       if (d.valid && delegationChain.at(-1)?.credentialId !== envelope.delegationId) factor(factors, "delegation-binding", "failed", "Envelope delegationId does not match terminal credential");
       else if (d.valid) factor(factors, "delegation-binding", "satisfied");
