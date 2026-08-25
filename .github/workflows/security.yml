@@ -1,26 +1,29 @@
 name: Security Gate
+
 on:
   push:
     branches: [main]
-    tags: ["v*", "security-*"]
+    tags: ['v*', 'security-*']
   pull_request:
+
 permissions:
   contents: read
+
 jobs:
   security-gate:
-    name: Build + 50-case adversarial gate
+    name: Build + adversarial security gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: npm
       - name: Install dependencies
-        run: npm install --ignore-scripts
+        run: npm ci
       - name: Typecheck/build
         run: npm run build
       - name: Run adversarial security suite
-        continue-on-error: true
         run: npm run test:security -- --reporter=json --outputFile=security-results.json
       - name: Refuse release on unauthorized ALLOW
         shell: bash
@@ -30,7 +33,7 @@ jobs:
             const fs = require("node:fs");
             const result = JSON.parse(fs.readFileSync("security-results.json", "utf8"));
             if (result.numFailedTests !== 0 || result.success !== true) {
-              console.error(`Security gate failed: ${result.numFailedTests} test(s) failed.`);
+              console.error(`Security gate failed: ${result.numFailedTests ?? "unknown"} test(s) failed.`);
               process.exit(1);
             }
             console.log(`Security gate passed: ${result.numPassedTests} tests passed; no unauthorized scenario reached ALLOW.`);
